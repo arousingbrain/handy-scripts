@@ -1,35 +1,40 @@
 #!/bin/bash
-# Usage: compare-deps.sh [-l] <dependency_tree_file1> <dependency_tree_file2>
-#   -l  : Show only dependencies from FILE1 that have a lower version than those in FILE2.
+# This script compares two Maven dependency tree files and reports dependencies
+# that exist in both files but have different versions.
+# When ONLY_LESS is set to 1, only those dependencies where FILE1's version is less than FILE2's are shown.
 
-# Check for the -l flag.
-ONLY_LESS=0
-if [ "$#" -lt 2 ]; then
-  echo "Usage: $0 [-l] <dependency_tree_file1> <dependency_tree_file2>"
+# Hardcoded configuration:
+FILE1="dependency_tree_file1.txt"
+FILE2="dependency_tree_file2.txt"
+ONLY_LESS=1  # Set to 1 to show only dependencies with FILE1's version < FILE2's; set to 0 to show all differing versions.
+
+# Function to compare two version strings.
+# Returns 0 (true) if $1 is strictly less than $2.
+version_lt() {
+    if [ "$1" = "$2" ]; then
+       return 1
+    fi
+    if [ "$(printf "%s\n%s\n" "$1" "$2" | sort -V | head -n1)" = "$1" ]; then
+       return 0
+    else
+       return 1
+    fi
+}
+
+# Check that the required files exist.
+if [ ! -f "$FILE1" ]; then
+  echo "Error: $FILE1 not found."
   exit 1
 fi
 
-if [ "$1" == "-l" ]; then
-  ONLY_LESS=1
-  shift
-fi
-
-if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 [-l] <dependency_tree_file1> <dependency_tree_file2>"
+if [ ! -f "$FILE2" ]; then
+  echo "Error: $FILE2 not found."
   exit 1
-fi
-
-FILE1="$1"
-FILE2="$2"
-
-# If the -l flag is set, ensure dpkg is available.
-if [ "$ONLY_LESS" -eq 1 ] && ! command -v dpkg > /dev/null; then
-    echo "Error: dpkg command not found. Please install dpkg or remove the -l flag."
-    exit 1
 fi
 
 # Extract dependencies in "group:artifact version" format.
-# Adjust the regex if your Maven dependency output differs.
+# This assumes Maven output lines are in the format:
+#   groupId:artifactId:packaging:version[:scope]
 grep -oE '[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+:[^:]+:[^:]+' "$FILE1" | \
   awk -F: '{print $1 ":" $2, $4}' | sort > deps1.txt
 
@@ -37,17 +42,15 @@ grep -oE '[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+:[^:]+:[^:]+' "$FILE2" | \
   awk -F: '{print $1 ":" $2, $4}' | sort > deps2.txt
 
 echo "Common dependencies with different versions:"
-
 if [ "$ONLY_LESS" -eq 1 ]; then
-    # For each common dependency, print it only if the version from FILE1 is less than FILE2's.
+    # For each common dependency, show it only if FILE1's version is less than FILE2's.
     join -j 1 deps1.txt deps2.txt | while read -r key ver1 ver2; do
-         # dpkg --compare-versions returns 0 if the first version is less than the second.
-         if dpkg --compare-versions "$ver1" lt "$ver2"; then
+         if version_lt "$ver1" "$ver2"; then
              echo "$key version1=$ver1 version2=$ver2"
          fi
     done
 else
-    # Show all common dependencies where the versions differ.
+    # Otherwise, show all common dependencies where the versions differ.
     join -j 1 deps1.txt deps2.txt | awk '$2 != $3 {print $1, "version1="$2, "version2="$3}'
 fi
 
