@@ -46,8 +46,8 @@ join -j 1 deps1.txt deps2.txt > joined.txt
 
 echo "Common dependencies with different versions:"
 if [ "$ONLY_LESS" -eq 1 ]; then
-    # Read the joined file line by line.
-    while IFS= read -r line; do
+    # Use a while loop that correctly handles a final line without a newline.
+    while IFS= read -r line || [ -n "$line" ]; do
          key=$(echo "$line" | awk '{print $1}')
          ver1=$(echo "$line" | awk '{print $2}')
          ver2=$(echo "$line" | awk '{print $3}')
